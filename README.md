@@ -31,7 +31,7 @@ cargo build --release
 
 `cargo vcpkg build` がlibheifと必要なネイティブライブラリを準備します。初回は依存ライブラリの取得・ビルドに時間がかかります。
 
-ビルド成果物は `target/release/heif-heic_input.dll` です。拡張子を `.aui2` に変更して plugins フォルダに配置してください。
+ビルド成果物は `target/release/heif_heic_input.dll` です。拡張子を `.aui2` に変更して plugins フォルダに配置してください。
 
 ## ライセンス
 
