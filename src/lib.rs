@@ -4,21 +4,34 @@ use num_rational::Rational32;
 use std::{
     collections::HashMap,
     fs,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
 
-fn decode_heic(path: &PathBuf) -> anyhow::Result<image::RgbaImage> {
+fn image_format_name(path: &Path) -> &'static str {
+    if path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("heif"))
+    {
+        "HEIF"
+    } else {
+        "HEIC"
+    }
+}
+
+fn decode_heic(path: &Path) -> anyhow::Result<image::RgbaImage> {
+    let format = image_format_name(path);
     let bytes = fs::read(path).map_err(|error| anyhow::anyhow!("Failed to read file: {error}"))?;
     let heif = LibHeif::new();
     let context = HeifContext::read_from_bytes(&bytes)
-        .map_err(|error| anyhow::anyhow!("Failed to parse HEIC file: {error}"))?;
+        .map_err(|error| anyhow::anyhow!("Failed to parse {format} file: {error}"))?;
     let handle = context
         .primary_image_handle()
         .map_err(|error| anyhow::anyhow!("Failed to get primary image: {error}"))?;
     let decoded = heif
         .decode(&handle, ColorSpace::Rgb(RgbChroma::Rgba), None)
-        .map_err(|error| anyhow::anyhow!("Failed to decode HEIC image: {error}"))?;
+        .map_err(|error| anyhow::anyhow!("Failed to decode {format} image: {error}"))?;
 
     let width = decoded.width();
     let height = decoded.height();
@@ -61,7 +74,7 @@ fn decode_heic(path: &PathBuf) -> anyhow::Result<image::RgbaImage> {
         pixels.len() == output_len,
         "Decoded HEIC pixel size mismatch"
     );
-    lprintln!("[HEIC] decoded: {}x{}", width, height);
+    lprintln!("[{}] decoded: {}x{}", format, width, height);
 
     image::RgbaImage::from_raw(width, height, pixels)
         .ok_or_else(|| anyhow::anyhow!("RgbaImage::from_raw failed"))
@@ -83,7 +96,7 @@ impl InputPlugin for HeicInputPlugin {
 
     fn plugin_info(&self) -> InputPluginTable {
         InputPluginTable {
-            name: "HEIC Input Plugin".to_string(),
+            name: "HEIF_HEIC Input Plugin".to_string(),
             information: "HEIC/HEIF Image Input Plugin".to_string(),
             input_type: InputType::Video,
             concurrent: false,
@@ -96,7 +109,8 @@ impl InputPlugin for HeicInputPlugin {
     }
 
     fn open(&self, file: PathBuf) -> anyhow::Result<Arc<image::RgbaImage>> {
-        lprintln!("[HEIC] open: {:?}", file);
+        let format = image_format_name(&file);
+        lprintln!("[{}] open: {:?}", format, file);
         let mut cache = self.cache.lock().unwrap();
         if let Some(image) = cache.get(&file) {
             return Ok(Arc::clone(image));
@@ -105,7 +119,7 @@ impl InputPlugin for HeicInputPlugin {
         let image = match decode_heic(&file) {
             Ok(image) => Arc::new(image),
             Err(error) => {
-                lprintln!("[HEIC] decode failed: {:#}", error);
+                lprintln!("[{}] decode failed: {:#}", format, error);
                 return Err(error);
             }
         };
